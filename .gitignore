@@ -1,0 +1,5 @@
+# binary
+osrc
+
+# no shell scripts
+*.sh
