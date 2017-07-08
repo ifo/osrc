@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -57,9 +56,6 @@ func main() {
 	r.Get("/", indexHandler)
 	r.Get("/rc/login", loginHandler)
 	r.Get("/rc/redirect", redirectHandler)
-
-	// Remove later
-	r.Get("/rc/me", rcHandler)
 
 	http.ListenAndServe(fmt.Sprintf(":%d", *port), sessionManager(r))
 }
@@ -273,48 +269,4 @@ func getToken(r *http.Request) (*oauth2.Token, error) {
 	}
 
 	return token, nil
-}
-
-/*
-// Cleanup or remove later
-*/
-
-// Get rc/me using a saved token.
-func rcHandler(w http.ResponseWriter, r *http.Request) {
-	token, err := getToken(r)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	if token == nil {
-		http.Redirect(w, r, "/rc/login", 302)
-		return
-	}
-	// We have a token now.
-	ctx := context.Background()
-	conf := &oauth2.Config{
-		ClientID:     os.Getenv("CLIENT_ID"),
-		ClientSecret: os.Getenv("CLIENT_SECRET"),
-		RedirectURL:  os.Getenv("REDIRECT_URL"),
-		Endpoint:     oauth2rc.Endpoint,
-	}
-	client := oauth2.NewClient(ctx, conf.TokenSource(ctx, token))
-
-	resp, err := client.Get("https://www.recurse.com/api/v1/people/me")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var jsonBody bytes.Buffer
-	err = json.Indent(&jsonBody, body, "", "  ")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	w.Write(jsonBody.Bytes())
 }
