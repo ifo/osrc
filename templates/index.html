@@ -6,6 +6,13 @@
   </head>
   <body>
     <header>
+      <div>
+        {{ if .User.Name }}
+          Hi {{ .User.Name }}
+        {{ else }}
+          Hello
+        {{ end }}
+      </div>
       <div class="tc w-100 w-50-ns">
         <h1>OSS Reading Club</h1>
       </div>

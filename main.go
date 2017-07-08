@@ -79,8 +79,14 @@ type User struct {
 */
 
 func indexHandler(w http.ResponseWriter, r *http.Request) {
+	// TODO: put this check in middleware
+	user, err := getUser(r)
+	if err != nil {
+		http.Redirect(w, r, "/rc/login", 302)
+		return
+	}
 	tmpl, _ := template.ParseFiles("templates/index.html")
-	tmpl.Execute(w, nil)
+	tmpl.Execute(w, struct{ User User }{User: user})
 }
 
 // Start the OAuth2 process.
