@@ -65,6 +65,16 @@ func main() {
 }
 
 /*
+// Types
+*/
+
+// Used to store a user, and also parse user information from an endpoint
+type User struct {
+	ID   int    `json:"id"`
+	Name string `json:"first_name"`
+}
+
+/*
 // Handlers
 */
 
@@ -118,7 +128,14 @@ func redirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = saveToken(r, token)
+	err = setToken(r, token)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	// set user
+	err = retrieveAndSetUser(r)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -132,7 +149,85 @@ func redirectHandler(w http.ResponseWriter, r *http.Request) {
 // Helpers
 */
 
-func saveToken(r *http.Request, t *oauth2.Token) error {
+func getClient(r *http.Request) (*http.Client, error) {
+	token, err := getToken(r)
+	if err != nil {
+		return nil, err
+	}
+	if token == nil {
+		return nil, fmt.Errorf("user not authenticated")
+	}
+	ctx := context.Background()
+	conf := &oauth2.Config{
+		ClientID:     os.Getenv("CLIENT_ID"),
+		ClientSecret: os.Getenv("CLIENT_SECRET"),
+		RedirectURL:  os.Getenv("REDIRECT_URL"),
+		Endpoint:     oauth2rc.Endpoint,
+	}
+	return oauth2.NewClient(ctx, conf.TokenSource(ctx, token)), nil
+}
+
+// getUser will error out if the session doesn't contain a valid user.
+// Successfully getting a user means that the user is authenticated.
+func getUser(r *http.Request) (User, error) {
+	var user User
+	if un, err := session.GetString(r, "username"); err != nil {
+		return User{}, err
+	} else {
+		user.Name = un
+	}
+
+	// We didn't actually have a user in the session.
+	if user.Name == "" {
+		return User{}, fmt.Errorf("user not authenticated")
+	}
+
+	if uid, err := session.GetInt(r, "userID"); err != nil {
+		return User{}, err
+	} else {
+		user.ID = uid
+	}
+	return user, nil
+}
+
+func setUser(r *http.Request, user User) error {
+	if user.Name == "" {
+		return fmt.Errorf("can't set a nameless user")
+	}
+
+	if err := session.PutString(r, "username", user.Name); err != nil {
+		return err
+	}
+	return session.PutInt(r, "userID", user.ID)
+}
+
+// retrieveAndSetUser requires a valid OAuth2 token.
+func retrieveAndSetUser(r *http.Request) error {
+	client, err := getClient(r)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Get("https://www.recurse.com/api/v1/people/me")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	var user User
+	err = json.Unmarshal(body, &user)
+	if err != nil {
+		return err
+	}
+
+	return setUser(r, user)
+}
+
+func setToken(r *http.Request, t *oauth2.Token) error {
 	if err := session.PutString(r, "accesstoken", t.AccessToken); err != nil {
 		return err
 	}
@@ -142,10 +237,7 @@ func saveToken(r *http.Request, t *oauth2.Token) error {
 	if err := session.PutString(r, "refreshtoken", t.RefreshToken); err != nil {
 		return err
 	}
-	if err := session.PutTime(r, "expiry", t.Expiry); err != nil {
-		return err
-	}
-	return nil
+	return session.PutTime(r, "expiry", t.Expiry)
 }
 
 func getToken(r *http.Request) (*oauth2.Token, error) {
@@ -154,7 +246,7 @@ func getToken(r *http.Request) (*oauth2.Token, error) {
 		return nil, err
 	} else {
 		if at == "" { // We don't have a token yet
-			return nil, nil
+			return nil, fmt.Errorf("user not authenticated")
 		}
 		token.AccessToken = at
 	}
