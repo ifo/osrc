@@ -41,7 +41,6 @@ func main() {
 	r := chi.NewRouter()
 
 	// TODO: Audit middleware
-	// TODO: Add Auth middleware
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
@@ -51,11 +50,16 @@ func main() {
 	r.FileServer("/assets/", http.Dir("assets"))
 
 	// Routes
-	// TODO: Separate authed routes from unauthed routes
-	// TODO: Add logout
-	r.Get("/", indexHandler)
+	r.Group(func(r chi.Router) {
+		// Routes that require auth
+		r.Use(Auth)
+
+		r.Get("/", indexHandler)
+	})
+
 	r.Get("/rc/login", loginHandler)
 	r.Get("/rc/redirect", redirectHandler)
+	// TODO: Add logout
 
 	http.ListenAndServe(fmt.Sprintf(":%d", *port), sessionManager(r))
 }
@@ -71,14 +75,30 @@ type User struct {
 }
 
 /*
+// Middleware
+*/
+
+// Auth ensures that a user is authed.
+func Auth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		username, _ := session.GetString(r, "username")
+		if username == "" {
+			http.RedirectHandler("/rc/login", 302).ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+/*
 // Handlers
 */
 
+// indexHandler requires a user to be authed.
 func indexHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: put this check in middleware
 	user, err := getUser(r)
 	if err != nil {
-		http.Redirect(w, r, "/rc/login", 302)
+		http.Error(w, err.Error(), 500)
 		return
 	}
 	tmpl, _ := template.ParseFiles("templates/index.html")
