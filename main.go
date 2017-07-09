@@ -168,26 +168,8 @@ func redirectHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 /*
-// Helpers
+// Session Storage
 */
-
-func getClient(r *http.Request) (*http.Client, error) {
-	token, err := getToken(r)
-	if err != nil {
-		return nil, err
-	}
-	if token == nil {
-		return nil, fmt.Errorf("user not authenticated")
-	}
-	ctx := context.Background()
-	conf := &oauth2.Config{
-		ClientID:     os.Getenv("CLIENT_ID"),
-		ClientSecret: os.Getenv("CLIENT_SECRET"),
-		RedirectURL:  os.Getenv("REDIRECT_URL"),
-		Endpoint:     oauth2rc.Endpoint,
-	}
-	return oauth2.NewClient(ctx, conf.TokenSource(ctx, token)), nil
-}
 
 // getUser will error out if the session doesn't contain a valid user.
 // Successfully getting a user means that the user is authenticated.
@@ -223,9 +205,27 @@ func setUser(r *http.Request, user User) error {
 	return session.PutInt(r, "userID", user.ID)
 }
 
+func getOauth2Client(r *http.Request) (*http.Client, error) {
+	token, err := getToken(r)
+	if err != nil {
+		return nil, err
+	}
+	if token == nil {
+		return nil, fmt.Errorf("user not authenticated")
+	}
+	ctx := context.Background()
+	conf := &oauth2.Config{
+		ClientID:     os.Getenv("CLIENT_ID"),
+		ClientSecret: os.Getenv("CLIENT_SECRET"),
+		RedirectURL:  os.Getenv("REDIRECT_URL"),
+		Endpoint:     oauth2rc.Endpoint,
+	}
+	return oauth2.NewClient(ctx, conf.TokenSource(ctx, token)), nil
+}
+
 // retrieveAndSetUser requires a valid OAuth2 token.
 func retrieveAndSetUser(r *http.Request) error {
-	client, err := getClient(r)
+	client, err := getOauth2Client(r)
 	if err != nil {
 		return err
 	}
