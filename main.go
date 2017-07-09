@@ -59,7 +59,7 @@ func main() {
 
 	r.Get("/rc/login", loginHandler)
 	r.Get("/rc/redirect", redirectHandler)
-	// TODO: Add logout
+	r.Get("/logout", logoutHandler)
 
 	http.ListenAndServe(fmt.Sprintf(":%d", *port), sessionManager(r))
 }
@@ -165,6 +165,15 @@ func redirectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: keep track of where to redirect the user
 	http.Redirect(w, r, "/", 302)
+}
+
+func logoutHandler(w http.ResponseWriter, r *http.Request) {
+	err := session.Clear(r)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.Write([]byte("Bye bye!"))
 }
 
 /*
