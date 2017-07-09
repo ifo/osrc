@@ -83,6 +83,8 @@ func Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username, _ := session.GetString(r, "username")
 		if username == "" {
+			// It is okay if this fails, we'll just redirect to "/" later.
+			session.PutString(r, "redirect", r.URL.Path)
 			http.RedirectHandler("/rc/login", 302).ServeHTTP(w, r)
 			return
 		}
@@ -163,8 +165,12 @@ func redirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: keep track of where to redirect the user
-	http.Redirect(w, r, "/", 302)
+	redirect, _ := session.PopString(r, "redirect")
+	if redirect == "" {
+		redirect = "/"
+	}
+
+	http.Redirect(w, r, redirect, 302)
 }
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
