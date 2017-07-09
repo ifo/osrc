@@ -2,15 +2,14 @@
 <html>
   <head>
     <link rel="stylesheet" href="/assets/css/tachyons.min.css" />
-    <link rel="stylesheet" href="/assets/css/site.css" />
   </head>
   <body>
     <header class="w-100 ph5-ns">
       <div class="db dt-ns w-100 center">
-        <div class="db dtc-ns tc w-100 w-50-ns">
+        <div class="db dtc-ns tc tl-ns w-100 w-50-ns">
           <h1 class="ma0">OSS Reading Club</h1>
         </div>
-        <div class="db dtc-ns tr-ns w-100 w-50-ns">
+        <div class="db dtc-ns tl tr-ns w-100 w-50-ns">
         {{ if .User.Name }}
           Hi {{ .User.Name }} &nbsp;<a href="/logout">Logout</a>
         {{ else }}
@@ -22,5 +21,6 @@
     <main class="ph5-ns">
       <p>Current Suggestions:</p>
     </main>
+    <script src="/assets/js/index.js"></script>
   </body>
 </html>
