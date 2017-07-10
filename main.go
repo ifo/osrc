@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -43,6 +46,7 @@ func main() {
 	// TODO: Audit middleware
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	// TODO: Setup proper logging
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
@@ -117,17 +121,38 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Redirect user to consent page to ask for permission for this app.
-	// TODO: randomize state
-	url := conf.AuthCodeURL("state", oauth2.AccessTypeOnline)
+	state, err := makeState()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	// Set state to check later.
+	err = session.PutString(r, "oauth2state", state)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	url := conf.AuthCodeURL(state, oauth2.AccessTypeOnline)
 	http.Redirect(w, r, url, 302)
 }
 
 // Finish the OAuth2 process.
 func redirectHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: check state
 	code := r.FormValue("code")
 	if code == "" {
 		http.Error(w, "no token received", 500)
+		return
+	}
+	state := r.FormValue("state")
+	sessionState, err := session.PopString(r, "oauth2state")
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	if state != sessionState {
+		http.Error(w, "state does not match", 500)
 		return
 	}
 
@@ -304,4 +329,26 @@ func getToken(r *http.Request) (*oauth2.Token, error) {
 	}
 
 	return token, nil
+}
+
+/*
+// Crypto
+*/
+
+func makeState() (string, error) {
+	randomBytes := make([]byte, 10)
+
+	n, err := rand.Read(randomBytes)
+	if err != nil {
+		return "", err
+	}
+	// Ensure we read enough random bytes.
+	if n != len(randomBytes) {
+		return "", fmt.Errorf("Not enough random bytes read")
+	}
+
+	// Save the sha sum so it becomes addressable.
+	sum := sha1.Sum(randomBytes)
+	// Make it URL safe
+	return hex.EncodeToString(sum[:]), nil
 }
