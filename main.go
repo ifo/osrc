@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -351,7 +350,7 @@ func getToken(r *http.Request) (*oauth2.Token, error) {
 */
 
 func makeState() (string, error) {
-	randomBytes := make([]byte, 10)
+	randomBytes := make([]byte, 20)
 
 	n, err := rand.Read(randomBytes)
 	if err != nil {
@@ -362,8 +361,6 @@ func makeState() (string, error) {
 		return "", fmt.Errorf("Not enough random bytes read")
 	}
 
-	// Save the sha sum so it becomes addressable.
-	sum := sha1.Sum(randomBytes)
 	// Make it URL safe
-	return hex.EncodeToString(sum[:]), nil
+	return hex.EncodeToString(randomBytes), nil
 }
