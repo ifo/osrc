@@ -21,10 +21,13 @@ import (
 	"github.com/ifo/oauth2rc"
 	"github.com/pressly/chi"
 	"github.com/pressly/chi/middleware"
+	"github.com/pressly/lg"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 )
 
 func main() {
+	// Setup
 	portStr := os.Getenv("PORT")
 	portDefault := 3000
 	var err error
@@ -34,20 +37,32 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	var port = flag.Int("port", portDefault, "Port to run the server on")
+	port := flag.Int("port", portDefault, "Port to run the server on")
+
+	// Ensure logging directory exists.
+	if err := os.Mkdir("logs", 0755); err != nil && !os.IsExist(err) {
+		log.Fatalf("error making directory: %v", err)
+	}
+	f, err := os.OpenFile("logs/server.logs", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+
+	logger := logrus.New()
+	logger.Out = f
 
 	flag.Parse()
 
+	// Execute
 	engine := memstore.New(5 * time.Minute)
 	sessionManager := session.Manage(engine)
 
 	r := chi.NewRouter()
 
-	// TODO: Audit middleware
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	// TODO: Setup proper logging
-	r.Use(middleware.Logger)
+	r.Use(lg.RequestLogger(logger))
 	r.Use(middleware.Recoverer)
 
 	// Serve assets
