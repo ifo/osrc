@@ -10,18 +10,12 @@
           <h1 class="ma0">OSS Reading Club</h1>
         </div>
         <div class="db dtc-ns tl tr-ns w-100 w-50-ns">
-        {{ if .User.Name }}
-          Hi {{ .User.Name }} &nbsp;<a href="/logout">Logout</a>
-        {{ else }}
           Hello, would you like to <a href="/rc/login">Login</a>?
-        {{ end }}
         </div>
       </div>
     </header>
     <main class="ph5-ns">
-    {{ if .User.Name }}
-      <p>Current Suggestions:</p>
-    {{ end }}
+      <p>Bye bye!</p>
     </main>
     <script src="/assets/js/index.js"></script>
   </body>

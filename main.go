@@ -67,14 +67,7 @@ func main() {
 	// Serve assets
 	r.FileServer("/assets/", http.Dir("assets"))
 
-	// Routes
-	r.Group(func(r chi.Router) {
-		// Routes that require auth
-		r.Use(Auth)
-
-		r.Get("/", indexHandler)
-	})
-
+	r.Get("/", indexHandler)
 	r.Get("/rc/login", loginHandler)
 	r.Get("/rc/redirect", redirectHandler)
 	r.Get("/logout", logoutHandler)
@@ -121,6 +114,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	// TODO: properly handle template parsing
 	tmpl, _ := template.ParseFiles("templates/index.html")
 	tmpl.Execute(w, struct{ User User }{User: user})
 }
@@ -223,15 +217,17 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	w.Write([]byte("Bye bye!"))
+	// TODO: properly handle template parsing
+	tmpl, _ := template.ParseFiles("templates/logout.html")
+	tmpl.Execute(w, nil)
 }
 
 /*
 // Session Storage
 */
 
-// getUser will error out if the session doesn't contain a valid user.
-// Successfully getting a user means that the user is authenticated.
+// getUser will return whatever user is in the session, or an empty user
+// if no user is logged in.
 func getUser(r *http.Request) (User, error) {
 	var user User
 	if un, err := session.GetString(r, "username"); err != nil {
@@ -239,12 +235,6 @@ func getUser(r *http.Request) (User, error) {
 	} else {
 		user.Name = un
 	}
-
-	// We didn't actually have a user in the session.
-	if user.Name == "" {
-		return User{}, fmt.Errorf("user not authenticated")
-	}
-
 	if uid, err := session.GetInt(r, "userID"); err != nil {
 		return User{}, err
 	} else {
