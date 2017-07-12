@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -134,12 +134,16 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		Endpoint:     oauth2rc.Endpoint,
 	}
 
-	// Redirect user to consent page to ask for permission for this app.
-	state, err := makeState()
+	// Make a random state string.
+	randomBytes := make([]byte, 20)
+	_, err := rand.Read(randomBytes)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	// Make it URL safe
+	state := base64.RawURLEncoding.EncodeToString(randomBytes)
+
 	// Set state to check later.
 	err = session.PutString(r, "oauth2state", state)
 	if err != nil {
@@ -147,6 +151,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Redirect user to consent page to ask for permission for this app.
 	url := conf.AuthCodeURL(state, oauth2.AccessTypeOnline)
 	http.Redirect(w, r, url, 302)
 }
@@ -343,24 +348,4 @@ func getToken(r *http.Request) (*oauth2.Token, error) {
 	}
 
 	return token, nil
-}
-
-/*
-// Crypto
-*/
-
-func makeState() (string, error) {
-	randomBytes := make([]byte, 20)
-
-	n, err := rand.Read(randomBytes)
-	if err != nil {
-		return "", err
-	}
-	// Ensure we read enough random bytes.
-	if n != len(randomBytes) {
-		return "", fmt.Errorf("Not enough random bytes read")
-	}
-
-	// Make it URL safe
-	return hex.EncodeToString(randomBytes), nil
 }
