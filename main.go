@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -25,8 +26,11 @@ import (
 	"golang.org/x/oauth2"
 )
 
+var templates *template.Template
+
 func main() {
 	// Setup
+	// Get the server port.
 	portStr := os.Getenv("PORT")
 	portDefault := 3000
 	var err error
@@ -37,6 +41,14 @@ func main() {
 		log.Fatal(err)
 	}
 	port := flag.Int("port", portDefault, "Port to run the server on")
+
+	// Parse the templates.
+	templateNames := []string{"index.html", "logout.html"}
+	templateDir := "templates"
+	for i := range templateNames {
+		templateNames[i] = filepath.Join(templateDir, templateNames[i])
+	}
+	templates = template.Must(template.ParseFiles(templateNames...))
 
 	// Ensure logging directory exists.
 	if err := os.Mkdir("logs", 0755); err != nil && !os.IsExist(err) {
@@ -114,9 +126,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	// TODO: properly handle template parsing
-	tmpl, _ := template.ParseFiles("templates/index.html")
-	tmpl.Execute(w, struct{ User User }{User: user})
+	templates.ExecuteTemplate(w, "index.html", struct{ User User }{User: user})
 }
 
 // Start the OAuth2 process.
@@ -217,9 +227,7 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	// TODO: properly handle template parsing
-	tmpl, _ := template.ParseFiles("templates/logout.html")
-	tmpl.Execute(w, nil)
+	templates.ExecuteTemplate(w, "logout.html", nil)
 }
 
 /*
