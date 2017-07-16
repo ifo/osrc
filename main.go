@@ -43,12 +43,8 @@ func main() {
 	port := flag.Int("port", portDefault, "Port to run the server on")
 
 	// Parse the templates.
-	templateNames := []string{"index.html", "logout.html"}
-	templateDir := "templates"
-	for i := range templateNames {
-		templateNames[i] = filepath.Join(templateDir, templateNames[i])
-	}
-	templates = template.Must(template.ParseFiles(templateNames...))
+	templates = template.Must(template.ParseGlob(filepath.Join("templates", "partials", "*.tmpl")))
+	templates = template.Must(templates.ParseGlob(filepath.Join("templates", "*.tmpl")))
 
 	// Ensure logging directory exists.
 	if err := os.Mkdir("logs", 0755); err != nil && !os.IsExist(err) {
@@ -126,7 +122,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	templates.ExecuteTemplate(w, "index.html", struct{ User User }{User: user})
+	templates.ExecuteTemplate(w, "index.tmpl", struct{ User User }{User: user})
 }
 
 // Start the OAuth2 process.
@@ -227,7 +223,7 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	templates.ExecuteTemplate(w, "logout.html", nil)
+	templates.ExecuteTemplate(w, "logout.tmpl", nil)
 }
 
 /*
