@@ -11,9 +11,11 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/alexedwards/scs/engine/memstore"
@@ -25,6 +27,14 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 )
+
+// TODO: use an actual database
+type OSSDB struct {
+	O []OSS
+	sync.Mutex
+}
+
+var ossDB = OSSDB{}
 
 var templates *template.Template
 
@@ -80,6 +90,11 @@ func main() {
 	r.Get("/rc/redirect", redirectHandler)
 	r.Get("/logout", logoutHandler)
 
+	r.Route("/oss", func(r chi.Router) {
+		r.With(Auth)
+		r.Post("/", ossPostHandler)
+	})
+
 	http.ListenAndServe(fmt.Sprintf(":%d", *port), sessionManager(r))
 }
 
@@ -87,7 +102,17 @@ func main() {
 // Types
 */
 
-// Used to store a user, and also parse user information from an endpoint
+// OSS is a project that someone has proposed to read.
+type OSS struct {
+	ID          int
+	Name        string
+	URL         *url.URL
+	Description string // Optional
+	Votes       int    // This is a cache of the votes table
+	SubmitterID int    // This is a User.ID
+}
+
+// Used to store a user, and also parse user information from an endpoint.
 type User struct {
 	ID   int    `json:"id"`
 	Name string `json:"first_name"`
@@ -224,6 +249,66 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	templates.ExecuteTemplate(w, "logout.tmpl", nil)
+}
+
+func ossPostHandler(w http.ResponseWriter, r *http.Request) {
+	// Get the submitterID from the session userID.
+	submitterID, err := session.GetInt(r, "userID")
+	if err != nil {
+		// Fail spectacularly because they shouldn't be here if they aren't logged in.
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	name := r.PostFormValue("name")
+	rawurl := r.PostFormValue("url")
+	description := r.PostFormValue("description")
+
+	// All form values must exist, except description.
+	if name == "" || rawurl == "" {
+		// TODO: handle this better; return a message to the form page
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	// Remove any scheme fragments from the front of the url.
+	for {
+		if rawurl[:2] == "//" {
+			rawurl = rawurl[2:]
+		} else if rawurl[:1] == "/" || rawurl[:1] == ":" {
+			rawurl = rawurl[1:]
+		} else {
+			break
+		}
+	}
+
+	// To help with parsing, prepend "http://" if there's no scheme.
+	if rawurl[:7] != "http://" || rawurl[:8] != "https://" {
+		rawurl = "http://" + rawurl
+	}
+
+	// The URL must be a url.
+	link, err := url.Parse(rawurl)
+	if err != nil {
+		// TODO: handle this better; return a message to the form page
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	oss := OSS{
+		Name:        name,
+		URL:         link,
+		Description: description,
+		SubmitterID: submitterID,
+	}
+
+	// TODO: use an actual database
+	ossDB.Lock()
+	defer ossDB.Unlock()
+	oss.ID = len(ossDB.O)
+	ossDB.O = append(ossDB.O, oss)
+
+	http.Redirect(w, r, "/", 302)
 }
 
 /*
