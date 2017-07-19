@@ -34,7 +34,13 @@ type OSSDB struct {
 	sync.Mutex
 }
 
+type VoteDB struct {
+	M map[Vote]struct{}
+	sync.Mutex
+}
+
 var ossDB = OSSDB{}
+var voteDB = VoteDB{M: map[Vote]struct{}{}}
 
 var templates *template.Template
 
@@ -101,6 +107,13 @@ func main() {
 /*
 // Types
 */
+
+// A vote is a positive point for an OSS project.
+// Users who propose a project can't also vote for it.
+type Vote struct {
+	UserID int
+	OSSID  int
+}
 
 // OSS is a project that someone has proposed to read.
 type OSS struct {
