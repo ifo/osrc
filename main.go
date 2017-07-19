@@ -20,9 +20,9 @@ import (
 
 	"github.com/alexedwards/scs/engine/memstore"
 	"github.com/alexedwards/scs/session"
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 	"github.com/ifo/oauth2rc"
-	"github.com/pressly/chi"
-	"github.com/pressly/chi/middleware"
 	"github.com/pressly/lg"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
@@ -89,7 +89,7 @@ func main() {
 	r.Use(middleware.Recoverer)
 
 	// Serve assets
-	r.FileServer("/assets/", http.Dir("assets"))
+	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
 
 	r.Get("/", indexHandler)
 	r.Get("/rc/login", loginHandler)
@@ -97,7 +97,7 @@ func main() {
 	r.Get("/logout", logoutHandler)
 
 	r.Route("/oss", func(r chi.Router) {
-		r.With(Auth)
+		r.Use(Auth)
 		r.Post("/", ossPostHandler)
 	})
 
