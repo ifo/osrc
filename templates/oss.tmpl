@@ -1,0 +1,11 @@
+{{template "header" .}}
+
+<div>
+  <div>{{.OSS.Name}}</div>
+  <div>{{.OSS.URL.String}}</div>
+  {{if .OSS.Description}}
+  <div>{{.OSS.Description}}</div>
+  {{end}}
+</div>
+
+{{template "footer"}}

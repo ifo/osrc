@@ -98,7 +98,12 @@ func main() {
 
 	r.Route("/oss", func(r chi.Router) {
 		r.Use(Auth)
+		r.Get("/", ossFormHandler)
 		r.Post("/", ossPostHandler)
+		r.Route("/{ossID}", func(r chi.Router) {
+			r.Use(ossContext)
+			r.Get("/", ossHandler)
+		})
 	})
 
 	http.ListenAndServe(fmt.Sprintf(":%d", *port), sessionManager(r))
@@ -149,11 +154,30 @@ func Auth(next http.Handler) http.Handler {
 	})
 }
 
+func ossContext(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ossIDStr := chi.URLParam(r, "ossID")
+		ossID, err := strconv.Atoi(ossIDStr)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		ossDB.Lock()
+		defer ossDB.Unlock()
+		if len(ossDB.O) <= ossID {
+			http.Error(w, "out of range", 500)
+			return
+		}
+		oss := ossDB.O[ossID]
+		ctx := context.WithValue(r.Context(), "oss", oss)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 /*
 // Handlers
 */
 
-// indexHandler requires a user to be authed.
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := getUser(r)
 	if err != nil {
@@ -264,6 +288,15 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "logout.tmpl", nil)
 }
 
+func ossFormHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := getUser(r)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	templates.ExecuteTemplate(w, "ossform.tmpl", struct{ User User }{User: user})
+}
+
 func ossPostHandler(w http.ResponseWriter, r *http.Request) {
 	// Get the submitterID from the session userID.
 	submitterID, err := session.GetInt(r, "userID")
@@ -322,6 +355,20 @@ func ossPostHandler(w http.ResponseWriter, r *http.Request) {
 	ossDB.O = append(ossDB.O, oss)
 
 	http.Redirect(w, r, "/", 302)
+}
+
+func ossHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := getUser(r)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	oss := r.Context().Value("oss").(OSS)
+	// TODO: make a better display page
+	templates.ExecuteTemplate(w, "oss.tmpl", struct {
+		User User
+		OSS  OSS
+	}{User: user, OSS: oss})
 }
 
 /*
