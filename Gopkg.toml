@@ -1,0 +1,23 @@
+[[constraint]]
+  branch = "master"
+  name = "github.com/alexedwards/scs"
+
+[[constraint]]
+  name = "github.com/go-chi/chi"
+  version = "3.1.1"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/ifo/oauth2rc"
+
+[[constraint]]
+  name = "github.com/pressly/lg"
+  version = "1.0.0"
+
+[[constraint]]
+  name = "github.com/sirupsen/logrus"
+  version = "1.0.2"
+
+[[constraint]]
+  branch = "master"
+  name = "golang.org/x/oauth2"
