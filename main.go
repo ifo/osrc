@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -15,7 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/alexedwards/scs/engine/memstore"
@@ -26,22 +26,12 @@ import (
 	"github.com/pressly/lg"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
-// TODO: use an actual database
-type OSSDB struct {
-	O []OSS
-	sync.Mutex
-}
-
-type VoteDB struct {
-	M map[Vote]struct{}
-	sync.Mutex
-}
-
-var ossDB = OSSDB{}
-var voteDB = VoteDB{M: map[Vote]struct{}{}}
-
+// ?TODO: put these in the default context?
+var preparedStatements *PreparedStatements
 var templates *template.Template
 
 func main() {
@@ -57,6 +47,20 @@ func main() {
 		log.Fatal(err)
 	}
 	port := flag.Int("port", portDefault, "Port to run the server on")
+
+	// Connect to the database.
+	db, err := connectToDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = setupDB(db)
+	if err != nil {
+		log.Fatal(err)
+	}
+	preparedStatements, err = setupPreparedStatements(db)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Parse the templates.
 	templates = template.Must(template.ParseGlob(filepath.Join("templates", "partials", "*.tmpl")))
@@ -110,7 +114,7 @@ func main() {
 }
 
 /*
-// Types
+// Types and Database
 */
 
 // A vote is a positive point for an OSS project.
@@ -126,7 +130,6 @@ type OSS struct {
 	Name        string
 	URL         *url.URL
 	Description string // Optional
-	Votes       int    // This is a cache of the votes table
 	SubmitterID int    // This is a User.ID
 }
 
@@ -134,6 +137,84 @@ type OSS struct {
 type User struct {
 	ID   int    `json:"id"`
 	Name string `json:"first_name"`
+}
+
+type PreparedStatements struct {
+	GetOSS    *sql.Stmt
+	GetAllOSS *sql.Stmt
+	CreateOSS *sql.Stmt
+	EditOSS   *sql.Stmt
+	GetVotes  *sql.Stmt
+	Vote      *sql.Stmt
+	Unvote    *sql.Stmt
+}
+
+func connectToDB() (*sql.DB, error) {
+	// Ensure db directory exists.
+	if err := os.Mkdir("db", 0755); err != nil && !os.IsExist(err) {
+		return nil, err
+	}
+	return sql.Open("sqlite3", "file:db/sqlite.db")
+}
+
+func setupPreparedStatements(db *sql.DB) (*PreparedStatements, error) {
+	statements := map[string]string{
+		"GetOSS":    "SELECT id, name, url, description, submitterid FROM oss WHERE id = $1;",
+		"GetAllOSS": "SELECT id, name, url, description, submitterid FROM oss;",
+		"CreateOSS": "INSERT INTO oss (name, url, description, submitterid) VALUES ($1, $2, $3, $4);",
+		"EditOSS":   "UPDATE oss SET name = $1, url = $2, description = $3 WHERE id = $4;",
+		"GetVotes":  "SELECT COUNT(1) FROM vote WHERE ossid = $1;",
+		"Vote":      "INSERT INTO vote (ossid, userid) VALUES ($1, $2);",
+		"Unvote":    "DELETE FROM vote WHERE ossid = $1 AND userid = $2;",
+	}
+
+	stmts := map[string]*sql.Stmt{}
+
+	for key, statement := range statements {
+		stmt, err := db.Prepare(statement)
+		if err != nil {
+			return nil, err
+		}
+		stmts[key] = stmt
+	}
+
+	return &PreparedStatements{
+		GetOSS:    stmts["GetOSS"],
+		GetAllOSS: stmts["GetAllOSS"],
+		CreateOSS: stmts["CreateOSS"],
+		EditOSS:   stmts["EditOSS"],
+		GetVotes:  stmts["GetVotes"],
+		Vote:      stmts["Vote"],
+		Unvote:    stmts["Unvote"],
+	}, nil
+}
+
+func setupDB(db *sql.DB) error {
+	ensureTables := []string{
+		`CREATE TABLE IF NOT EXISTS oss (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			url TEXT UNIQUE NOT NULL,
+			description TEXT,
+			submitterid INT NOT NULL);`,
+		`CREATE TABLE IF NOT EXISTS vote (
+			ossid INTEGER NOT NULL,
+			userid INTEGER NOT NULL);`,
+	}
+
+	ensureVoteIndexes := []string{
+		"CREATE INDEX IF NOT EXISTS voteossindex ON vote (ossid);",
+		"CREATE INDEX IF NOT EXISTS voteuserindex ON vote (userid);",
+		"CREATE UNIQUE INDEX IF NOT EXISTS voteindex ON vote (ossid, userid);",
+	}
+
+	for _, stmt := range append(ensureTables, ensureVoteIndexes...) {
+		_, err := db.Exec(stmt)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 /*
@@ -162,13 +243,23 @@ func ossContext(next http.Handler) http.Handler {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		ossDB.Lock()
-		defer ossDB.Unlock()
-		if len(ossDB.O) <= ossID {
-			http.Error(w, "out of range", 500)
+		oss := OSS{}
+		var urlstr string
+		err = preparedStatements.GetOSS.QueryRow(ossID).Scan(&oss.ID, &oss.Name, &urlstr, &oss.Description, &oss.SubmitterID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "couldn't find that one", 404)
+			} else {
+				http.Error(w, err.Error(), 500)
+			}
 			return
 		}
-		oss := ossDB.O[ossID]
+		oss.URL, err = url.Parse(urlstr)
+		// This really shouldn't ever fail here.
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 		ctx := context.WithValue(r.Context(), "oss", oss)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -334,27 +425,24 @@ func ossPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The URL must be a url.
-	link, err := url.Parse(rawurl)
-	if err != nil {
+	if _, err = url.Parse(rawurl); err != nil {
 		// TODO: handle this better; return a message to the form page
 		http.Error(w, err.Error(), 500)
 		return
 	}
 
-	oss := OSS{
-		Name:        name,
-		URL:         link,
-		Description: description,
-		SubmitterID: submitterID,
+	createResult, err := preparedStatements.CreateOSS.Exec(name, rawurl, description, submitterID)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	ossID, err := createResult.LastInsertId()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
 	}
 
-	// TODO: use an actual database
-	ossDB.Lock()
-	defer ossDB.Unlock()
-	oss.ID = len(ossDB.O)
-	ossDB.O = append(ossDB.O, oss)
-
-	http.Redirect(w, r, "/", 302)
+	http.Redirect(w, r, fmt.Sprintf("/oss/%d", ossID), 302)
 }
 
 func ossHandler(w http.ResponseWriter, r *http.Request) {
