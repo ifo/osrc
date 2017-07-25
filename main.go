@@ -131,6 +131,7 @@ type OSS struct {
 	URL         *url.URL
 	Description string // Optional
 	SubmitterID int    // This is a User.ID
+	Votes       int
 }
 
 // Used to store a user, and also parse user information from an endpoint.
@@ -159,8 +160,15 @@ func connectToDB() (*sql.DB, error) {
 
 func setupPreparedStatements(db *sql.DB) (*PreparedStatements, error) {
 	statements := map[string]string{
-		"GetOSS":    "SELECT id, name, url, description, submitterid FROM oss WHERE id = $1;",
-		"GetAllOSS": "SELECT id, name, url, description, submitterid FROM oss;",
+		"GetOSS": `SELECT o.id, o.name, o.url, o.description, o.submitterid, COUNT(v.ossid) AS votes
+		  FROM oss o
+		  LEFT JOIN vote v ON o.id = v.ossid
+		  WHERE id = $1
+		  GROUP BY o.id, o.name, o.url, o.description, o.submitterid;`,
+		"GetAllOSS": `SELECT o.id, o.name, o.url, o.description, o.submitterid, COUNT(v.ossid) AS votes
+		  FROM oss o
+		  LEFT JOIN vote v ON o.id = v.ossid
+		  GROUP BY o.id, o.name, o.url, o.description, o.submitterid;`,
 		"CreateOSS": "INSERT INTO oss (name, url, description, submitterid) VALUES ($1, $2, $3, $4);",
 		"EditOSS":   "UPDATE oss SET name = $1, url = $2, description = $3 WHERE id = $4;",
 		"GetVotes":  "SELECT COUNT(1) FROM vote WHERE ossid = $1;",
@@ -245,7 +253,8 @@ func ossContext(next http.Handler) http.Handler {
 		}
 		oss := OSS{}
 		var urlstr string
-		err = preparedStatements.GetOSS.QueryRow(ossID).Scan(&oss.ID, &oss.Name, &urlstr, &oss.Description, &oss.SubmitterID)
+		err = preparedStatements.GetOSS.QueryRow(ossID).Scan(
+			&oss.ID, &oss.Name, &urlstr, &oss.Description, &oss.SubmitterID, &oss.Votes)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				http.Error(w, "couldn't find that one", 404)
