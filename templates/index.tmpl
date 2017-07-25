@@ -2,7 +2,14 @@
 
 {{ if .User.Name }}
   <p><a href="/oss">Suggest another project</a></p>
-  <p>Current Suggestions:</p>
+  <div>
+    <p>Current Suggestions:</p>
+    {{range .OSSes}}
+    {{template "oss" .}}
+    {{else}}
+    <p>No OSSes yet :\</p>
+    {{end}}
+  </div>
 {{ end }}
 
 {{template "footer"}}

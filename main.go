@@ -284,7 +284,36 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	templates.ExecuteTemplate(w, "index.tmpl", struct{ User User }{User: user})
+
+	ossRows, err := preparedStatements.GetAllOSS.Query()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	defer ossRows.Close()
+
+	allOSS := []OSS{}
+	for ossRows.Next() {
+		var oss OSS
+		var urlstr string
+		ossRows.Scan(&oss.ID, &oss.Name, &urlstr, &oss.Description, &oss.SubmitterID, &oss.Votes)
+		// This parse shouldn't ever fail.
+		oss.URL, _ = url.Parse(urlstr)
+		allOSS = append(allOSS, oss)
+	}
+	err = ossRows.Err()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	templates.ExecuteTemplate(w, "index.tmpl", struct {
+		User  User
+		OSSes []OSS
+	}{
+		User:  user,
+		OSSes: allOSS,
+	})
 }
 
 // Start the OAuth2 process.

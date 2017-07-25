@@ -1,0 +1,10 @@
+{{define "oss"}}
+<div>
+  <div>{{.Name}}</div>
+  <div>{{.URL.String}}</div>
+  {{if .Description}}
+  <div>{{.Description}}</div>
+  {{end}}
+  <div>{{.Votes}}</div>
+</div>
+{{end}}
