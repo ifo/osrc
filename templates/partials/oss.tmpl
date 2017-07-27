@@ -1,10 +1,15 @@
 {{define "oss"}}
 <div>
-  <div>{{.Name}}</div>
-  <div>{{.URL.String}}</div>
-  {{if .Description}}
-  <div>{{.Description}}</div>
+  <div>{{.OSS.Name}}</div>
+  <div>{{.OSS.URL.String}}</div>
+  {{if .OSS.Description}}
+  <div>{{.OSS.Description}}</div>
   {{end}}
-  <div>{{.Votes}}</div>
+  <div>{{.OSS.Votes}}</div>
+  {{if eq .OSS.SubmitterID .User.ID}}
+  <div>
+    <a href="/oss/{{.OSS.ID}}/edit">Edit</a>
+  </div>
+  {{end}}
 </div>
 {{end}}

@@ -107,6 +107,8 @@ func main() {
 		r.Route("/{ossID}", func(r chi.Router) {
 			r.Use(ossContext)
 			r.Get("/", ossHandler)
+			r.Get("/edit", ossEditHandler)
+			r.Post("/", ossUpdateHandler)
 		})
 	})
 
@@ -148,6 +150,11 @@ type PreparedStatements struct {
 	GetVotes  *sql.Stmt
 	Vote      *sql.Stmt
 	Unvote    *sql.Stmt
+}
+
+type OSSWithUser struct {
+	OSS  OSS
+	User User
 }
 
 func connectToDB() (*sql.DB, error) {
@@ -292,14 +299,16 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ossRows.Close()
 
-	allOSS := []OSS{}
+	ossesWithUser := []OSSWithUser{}
+
 	for ossRows.Next() {
 		var oss OSS
 		var urlstr string
 		ossRows.Scan(&oss.ID, &oss.Name, &urlstr, &oss.Description, &oss.SubmitterID, &oss.Votes)
 		// This parse shouldn't ever fail.
 		oss.URL, _ = url.Parse(urlstr)
-		allOSS = append(allOSS, oss)
+		ossWithUser := OSSWithUser{OSS: oss, User: user}
+		ossesWithUser = append(ossesWithUser, ossWithUser)
 	}
 	err = ossRows.Err()
 	if err != nil {
@@ -309,10 +318,10 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 
 	templates.ExecuteTemplate(w, "index.tmpl", struct {
 		User  User
-		OSSes []OSS
+		OSSes []OSSWithUser
 	}{
 		User:  user,
-		OSSes: allOSS,
+		OSSes: ossesWithUser,
 	})
 }
 
@@ -423,7 +432,10 @@ func ossFormHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	templates.ExecuteTemplate(w, "ossform.tmpl", struct{ User User }{User: user})
+	templates.ExecuteTemplate(w, "ossform.tmpl", struct {
+		User User
+		OSS  bool // OSS must exist, or else a template that checks for .OSS specifically will fail.
+	}{User: user, OSS: false})
 }
 
 func ossPostHandler(w http.ResponseWriter, r *http.Request) {
@@ -491,10 +503,76 @@ func ossHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	oss := r.Context().Value("oss").(OSS)
 	// TODO: make a better display page
-	templates.ExecuteTemplate(w, "oss.tmpl", struct {
-		User User
-		OSS  OSS
-	}{User: user, OSS: oss})
+	templates.ExecuteTemplate(w, "oss.tmpl", OSSWithUser{User: user, OSS: oss})
+}
+
+func ossEditHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := getUser(r)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	oss := r.Context().Value("oss").(OSS)
+	templates.ExecuteTemplate(w, "ossform.tmpl", OSSWithUser{User: user, OSS: oss})
+}
+
+func ossUpdateHandler(w http.ResponseWriter, r *http.Request) {
+	name := r.PostFormValue("name")
+	rawurl := r.PostFormValue("url")
+	description := r.PostFormValue("description")
+
+	oss := r.Context().Value("oss").(OSS)
+	// At least one form value must be non-blank.
+	if name == "" || rawurl == "" || description == "" {
+		http.Redirect(w, r, fmt.Sprintf("/oss/%d", oss.ID), 302)
+		return
+	}
+
+	// Modify the URL if it was given.
+	if rawurl != "" {
+		// Remove any scheme fragments from the front of the url.
+		for {
+			if rawurl[:2] == "//" {
+				rawurl = rawurl[2:]
+			} else if rawurl[:1] == "/" || rawurl[:1] == ":" {
+				rawurl = rawurl[1:]
+			} else {
+				break
+			}
+		}
+
+		fmt.Println(rawurl[:7])
+		// To help with parsing, prepend "http://" if there's no scheme.
+		if rawurl[:7] != "http://" || rawurl[:8] != "https://" {
+			rawurl = "http://" + rawurl
+		}
+
+		// The URL must be a url.
+		if _, err := url.Parse(rawurl); err != nil {
+			// TODO: handle this better; return a message to the form page
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	}
+
+	if name != "" {
+		oss.Name = name
+	}
+	if rawurl == "" {
+		rawurl = oss.URL.String()
+	}
+	if description != "" {
+		oss.Description = description
+	}
+
+	res, err := preparedStatements.EditOSS.Exec(oss.Name, rawurl, oss.Description, oss.ID)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	fmt.Println(res.RowsAffected())
+
+	http.Redirect(w, r, fmt.Sprintf("/oss/%d", oss.ID), 302)
 }
 
 /*

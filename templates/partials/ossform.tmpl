@@ -1,0 +1,26 @@
+{{define "ossform"}}
+
+{{if .OSS}}
+<form action="/oss/{{.OSS.ID}}" method="post">
+{{else}}
+<form action="/oss" method="post">
+{{end}}
+  <label for="name">Name</label>
+  <br />
+  <input type="text" name="name" placeholder="Go Zulip Bot"
+    {{if .OSS}}value="{{.OSS.Name}}"{{end}} />
+  <br />
+  <label for="url">url</label>
+  <br />
+  <input type="text" name="url" placeholder="github.com/ifo/gozulipbot"
+    {{if .OSS}}value="{{.OSS.URL.String}}"{{end}} />
+  <br />
+  <label for="description">Description</label>
+  <br />
+  <input type="text" name="description" placeholder="optional"
+    {{if .OSS}}value="{{.OSS.Description}}"{{end}} />
+  <br />
+  <button type="submit">Submit</button>
+</form>
+
+{{end}}
